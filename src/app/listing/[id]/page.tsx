@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import BoroughBadge from "@/components/BoroughBadge";
 import SourceBadge from "@/components/SourceBadge";
 import { getListingById } from "@/lib/queries";
+import { cleanListing, completenessScore } from "@/lib/listing-utils";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -11,9 +12,10 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const listing = await getListingById(id);
-  if (!listing) return { title: "Listing Not Found — ReRentNYC" };
+  const raw = await getListingById(id);
+  if (!raw) return { title: "Listing Not Found — ReRentNYC" };
 
+  const listing = cleanListing(raw);
   const title = listing.title || listing.address || "Re-Rental Listing";
   return {
     title: `${title} — ReRentNYC`,
@@ -21,14 +23,31 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
+const SOURCE_NAMES: Record<string, string> = {
+  hdc: "NYC HDC (Housing Development Corporation)",
+  resideny: "Reside New York",
+  taxace: "Taxace NY",
+  tfc: "TF Cornerstone",
+  sjp: "SJP Residential",
+  stnicksalliance: "St. Nicks Alliance",
+  ibis: "Ibis Management",
+  city5: "City5",
+};
+
 export default async function ListingPage({ params }: PageProps) {
   const { id } = await params;
-  const listing = await getListingById(id);
+  const raw = await getListingById(id);
 
-  if (!listing) notFound();
+  if (!raw) notFound();
+
+  const listing = cleanListing(raw);
+  const rentWasExtracted = raw.rent === null && listing.rent !== null;
+  const isIncomplete = completenessScore(listing) < 0.6;
 
   const fmt = (n: number | null) =>
     n !== null ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : null;
+
+  const sourceName = SOURCE_NAMES[listing.source] || listing.source;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -38,7 +57,7 @@ export default async function ListingPage({ params }: PageProps) {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
         <div className="flex flex-wrap gap-2 mb-4">
-          <BoroughBadge borough={listing.borough} />
+          {listing.borough && <BoroughBadge borough={listing.borough} />}
           <SourceBadge source={listing.source} />
           {(() => {
             const diff = Date.now() - new Date(listing.first_seen).getTime();
@@ -57,28 +76,52 @@ export default async function ListingPage({ params }: PageProps) {
           {listing.title || "Re-Rental Listing"}
         </h1>
 
-        {listing.address && (
+        {listing.address && listing.address !== listing.title && (
           <p className="text-gray-600 mb-6">{listing.address}</p>
+        )}
+
+        {isIncomplete && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm text-amber-800">
+              <span className="font-semibold">Limited details available.</span>{" "}
+              Some information for this listing isn&apos;t displayed here. Click
+              &quot;Apply / View Original&quot; below to see the full listing from{" "}
+              <span className="font-medium">{sourceName}</span>.
+            </p>
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-6 mb-6">
           <div>
             <p className="text-sm text-gray-500">Monthly Rent</p>
-            <p className="text-lg font-semibold">
-              {listing.rent ? `$${listing.rent.toLocaleString("en-US", { maximumFractionDigits: 0 })}/mo` : "Contact for rent"}
-            </p>
+            {listing.rent !== null ? (
+              <div>
+                <p className="text-lg font-semibold">
+                  {rentWasExtracted ? "~" : ""}${listing.rent.toLocaleString("en-US", { maximumFractionDigits: 0 })}/mo
+                </p>
+                {rentWasExtracted && (
+                  <p className="text-xs text-gray-400 italic">Estimated from listing</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-lg font-semibold text-gray-400 italic">See original listing</p>
+            )}
           </div>
           <div>
             <p className="text-sm text-gray-500">Bedrooms</p>
-            <p className="text-lg font-semibold">{listing.bedrooms || "N/A"}</p>
+            <p className={`text-lg font-semibold ${listing.bedrooms ? "" : "text-gray-400 italic"}`}>
+              {listing.bedrooms || "See original listing"}
+            </p>
           </div>
           <div>
             <p className="text-sm text-gray-500">Income Range</p>
-            <p className="text-lg font-semibold">
-              {listing.income_min !== null || listing.income_max !== null
-                ? `${fmt(listing.income_min) || "?"} – ${fmt(listing.income_max) || "?"}`
-                : "Contact for details"}
-            </p>
+            {listing.income_min !== null || listing.income_max !== null ? (
+              <p className="text-lg font-semibold">
+                {fmt(listing.income_min) || "?"} – {fmt(listing.income_max) || "?"}
+              </p>
+            ) : (
+              <p className="text-lg font-semibold text-gray-400 italic">See original listing</p>
+            )}
           </div>
           {listing.ami_pct && (
             <div>
@@ -86,6 +129,11 @@ export default async function ListingPage({ params }: PageProps) {
               <p className="text-lg font-semibold">{listing.ami_pct}</p>
             </div>
           )}
+        </div>
+
+        <div className="mb-6">
+          <p className="text-sm text-gray-500 mb-1">Source</p>
+          <p className="text-sm font-medium text-gray-700">{sourceName}</p>
         </div>
 
         <div className="text-xs text-gray-400 mb-6">
