@@ -31,6 +31,41 @@ export function cleanListing(listing: Listing): Listing {
   return cleaned;
 }
 
+/**
+ * Checks if the listing URL points to a specific property page vs a generic
+ * homepage or application form. Returns true if it's a direct property link.
+ */
+export function hasDirectLink(listing: Listing): boolean {
+  if (!listing.url) return false;
+  const url = listing.url.toLowerCase();
+
+  // Generic pages — not property-specific
+  const genericPatterns = [
+    "/how-to-apply",
+    "/apply",
+    "/contact",
+    "/portfolio",
+    "/home",
+    "/affordable-rental-opportunities",
+    "/current-vacancies",
+    "/apartments-for-rent",
+    "/housing-opportunities",
+  ];
+  for (const pattern of genericPatterns) {
+    if (url.endsWith(pattern) || url.endsWith(pattern + "/")) return false;
+  }
+
+  // If URL is just the site root
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/" || parsed.pathname === "") return false;
+  } catch {
+    return false;
+  }
+
+  return true;
+}
+
 const JUNK_TITLES = new Set([
   "apply here",
   "click here",

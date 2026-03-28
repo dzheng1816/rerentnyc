@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import BoroughBadge from "@/components/BoroughBadge";
 import SourceBadge from "@/components/SourceBadge";
 import { getListingById } from "@/lib/queries";
-import { cleanListing, completenessScore } from "@/lib/listing-utils";
+import { cleanListing, completenessScore, hasDirectLink } from "@/lib/listing-utils";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -162,14 +162,23 @@ export default async function ListingPage({ params }: PageProps) {
         </div>
 
         {listing.url && (
-          <a
-            href={listing.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block rounded-lg bg-blue-600 px-6 py-3 text-white font-medium hover:bg-blue-700 transition-colors"
-          >
-            Apply / View Original &rarr;
-          </a>
+          <div>
+            <a
+              href={listing.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block rounded-lg bg-blue-600 px-6 py-3 text-white font-medium hover:bg-blue-700 transition-colors"
+            >
+              {hasDirectLink(listing)
+                ? "Apply / View Original \u2192"
+                : `View on ${sourceName} \u2192`}
+            </a>
+            {!hasDirectLink(listing) && (
+              <p className="mt-2 text-xs text-gray-400">
+                This link goes to the agent&apos;s website. Look for this address on their page to find the specific unit.
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>
